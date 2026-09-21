@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CrashDet — Control Dashboard</title>
+<meta name="description" content="Live crash intake and analytics dashboard for CrashDet edge nodes.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+<style>
+  :root{
+    --background:#ffffff; --foreground:#0a0a0a;
+    --brand:#2563c9; --brand-deep:#0f2f63; --brand-light:#5790e6;
+    --accent-teal:#0b6e97; --accent-signal:#ff5a36;
+    --surface:#f4f4f4; --surface-card:#ffffff;
+    --ink:#0a0a0a; --ink-soft:#717784; --ghost:#d7dae1; --hairline:#e6e8ec;
+    --radius-card:1.25rem; --radius-card-lg:1.75rem; --radius-pill:62.5rem;
+    --mono:"Space Mono", monospace;
+  }
+  *,*::before,*::after{ box-sizing:border-box; margin:0; }
+  html{ font-size:16px; }
+  @media (max-width:1440px){ html{ font-size:0.95vw; } }
+  @media (max-width:1024px){ html{ font-size:1.35vw; } }
+  @media (max-width:640px){ html{ font-size:3.6vw; } }
+  body{ min-height:100vh; background:var(--surface); color:var(--foreground); font-family:"Onest",system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  img{ display:block; max-width:100%; }
+  button{ font:inherit; cursor:pointer; }
+  a{ color:inherit; }
+  :focus-visible{ outline:2px solid var(--brand-light); outline-offset:2px; }
+
+  .wrap{ max-width:88rem; margin:0 auto; padding:0.75rem; }
+  @media (min-width:640px){ .wrap{ padding:1.25rem; } }
+
+  /* ---------- header ---------- */
+  header.dash{ display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:1rem 1.25rem; background:var(--brand-deep); color:#fff; border-radius:var(--radius-card-lg); flex-wrap:wrap; }
+  .brand{ display:flex; align-items:center; gap:0.6rem; font-weight:500; text-transform:uppercase; letter-spacing:0.18em; font-size:0.95rem; }
+  .brand svg{ width:1.3rem; height:1.3rem; flex:none; }
+  .status-pill{ display:inline-flex; align-items:center; gap:0.4rem; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.1em; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.18); border-radius:var(--radius-pill); padding:0.4rem 0.8rem; }
+  .status-pill .dot{ width:0.45rem; height:0.45rem; border-radius:50%; background:#3ddc84; box-shadow:0 0 0 0 rgba(61,220,132,.6); animation:pulse 2s infinite; }
+  @keyframes pulse{ 0%{ box-shadow:0 0 0 0 rgba(61,220,132,.55); } 70%{ box-shadow:0 0 0 8px rgba(61,220,132,0); } 100%{ box-shadow:0 0 0 0 rgba(61,220,132,0); } }
+  .hdr-right{ display:flex; align-items:center; gap:0.75rem; }
+
+  .sos-btn{ display:inline-flex; align-items:center; gap:0.55rem; background:var(--accent-signal); color:#fff; border-radius:var(--radius-pill); padding:0.7rem 1.3rem; font-size:0.8rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; box-shadow:0 0.4rem 1rem rgba(255,90,54,.35); transition:background .25s, transform .2s; border:none; }
+  .sos-btn:hover{ background:#e0431f; transform:translateY(-1px); }
+  .sos-btn svg{ width:1.1rem; height:1.1rem; }
+
+  /* ---------- grid ---------- */
+  .grid{ display:grid; grid-template-columns:1fr; gap:0.9rem; margin-top:0.9rem; }
+  @media (min-width:900px){ .grid{ grid-template-columns:1.15fr 1fr; align-items:start; } }
+
+  .card{ background:var(--surface-card); border-radius:var(--radius-card); padding:1.25rem; border:1px solid var(--hairline); }
+  .card h2{ font-size:1rem; font-weight:600; }
+  .card .sub{ font-size:0.78rem; color:var(--ink-soft); margin-top:0.2rem; }
+  .card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
+
+  .eyebrow{ display:inline-flex; align-items:center; gap:0.4rem; font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.18em; color:var(--ink-soft); }
+  .eyebrow::before{ content:""; width:0.35rem; height:0.35rem; border-radius:50%; background:var(--brand); }
+
+  /* ---------- JSON intake dropzone ---------- */
+  .dropzone{ margin-top:1rem; border:1.5px dashed var(--hairline); border-radius:1rem; padding:1.75rem 1rem; text-align:center; transition:border-color .25s, background .25s; cursor:pointer; }
+  .dropzone.drag{ border-color:var(--brand-light); background:rgba(87,144,230,.06); }
+  .dropzone svg{ width:2rem; height:2rem; color:var(--brand); margin:0 auto 0.6rem; }
+  .dropzone p{ font-size:0.85rem; color:var(--ink-soft); }
+  .dropzone .hint{ font-size:0.7rem; margin-top:0.3rem; color:var(--ghost); }
+  .dropzone input{ display:none; }
+
+  .payload-box{ margin-top:1rem; display:none; }
+  .payload-box.show{ display:block; }
+  .payload-meta{ display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem; }
+  .chip{ font-size:0.7rem; font-weight:500; text-transform:uppercase; letter-spacing:0.05em; padding:0.35rem 0.7rem; border-radius:var(--radius-pill); background:var(--surface); color:var(--ink-soft); }
+  .chip.crit{ background:rgba(255,90,54,.12); color:#c73d1e; }
+  .chip.ok{ background:rgba(37,99,201,.12); color:var(--brand); }
+  pre.json-view{ font-family:var(--mono); font-size:0.72rem; line-height:1.6; background:var(--ink); color:#d7f9dd; border-radius:0.85rem; padding:1rem; max-height:16rem; overflow:auto; }
+  .payload-actions{ display:flex; gap:0.6rem; margin-top:0.75rem; flex-wrap:wrap; }
+  .btn-ghost{ font-size:0.78rem; font-weight:500; padding:0.55rem 1rem; border-radius:var(--radius-pill); border:1px solid var(--hairline); background:var(--background); transition:border-color .2s, background .2s; }
+  .btn-ghost:hover{ border-color:var(--brand-light); background:rgba(87,144,230,.06); }
+  .btn-dark{ font-size:0.78rem; font-weight:500; padding:0.55rem 1rem; border-radius:var(--radius-pill); background:var(--ink); color:#fff; border:none; transition:background .2s; }
+  .btn-dark:hover{ background:var(--brand-deep); }
+
+  /* ---------- KPI stat row ---------- */
+  .kpis{ display:grid; grid-template-columns:repeat(3,1fr); gap:0.75rem; }
+  @media (max-width:640px){ .kpis{ grid-template-columns:1fr; } }
+  .kpi{ background:var(--surface-card); border:1px solid var(--hairline); border-radius:var(--radius-card); padding:1rem 1.1rem; position:relative; overflow:hidden; }
+  .kpi .eyebrow{ margin-bottom:0.5rem; }
+  .kpi .val{ font-size:2.1rem; font-weight:600; letter-spacing:-0.01em; line-height:1; }
+  .kpi .delta{ font-size:0.72rem; margin-top:0.5rem; display:inline-flex; align-items:center; gap:0.25rem; color:var(--ink-soft); }
+  .kpi .delta.up{ color:#c73d1e; }
+  .kpi .delta.down{ color:#1f9d55; }
+  .kpi .spark{ height:2.2rem; margin-top:0.7rem; }
+
+  /* ---------- charts ---------- */
+  .chart-card canvas{ max-width:100%; }
+  .chart-wrap{ height:14rem; margin-top:1rem; }
+  .chart-wrap.small{ height:11rem; }
+
+  /* ---------- heatmap ---------- */
+  .heatmap{ margin-top:1rem; }
+  .heat-grid{ display:grid; grid-template-columns:repeat(12,1fr); gap:0.25rem; }
+  .heat-cell{ aspect-ratio:1; border-radius:0.3rem; background:var(--surface); position:relative; }
+  .heat-cell:hover::after{ content:attr(data-label); position:absolute; bottom:120%; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; font-size:0.62rem; padding:0.25rem 0.5rem; border-radius:0.4rem; white-space:nowrap; z-index:5; }
+  .heat-labels{ display:flex; justify-content:space-between; font-size:0.6rem; color:var(--ink-soft); margin-top:0.4rem; }
+  .heat-legend{ display:flex; align-items:center; gap:0.4rem; font-size:0.65rem; color:var(--ink-soft); margin-top:0.75rem; }
+  .heat-legend .swatches{ display:flex; gap:2px; }
+  .heat-legend .sw{ width:0.8rem; height:0.6rem; border-radius:0.15rem; }
+
+  /* ---------- log feed ---------- */
+  .log-list{ margin-top:1rem; display:flex; flex-direction:column; gap:0.6rem; max-height:16rem; overflow:auto; }
+  .log-item{ display:flex; gap:0.7rem; padding:0.6rem 0.7rem; border-radius:0.75rem; background:var(--surface); font-size:0.78rem; align-items:flex-start; }
+  .log-dot{ width:0.5rem; height:0.5rem; border-radius:50%; margin-top:0.35rem; flex:none; }
+  .log-dot.crit{ background:var(--accent-signal); }
+  .log-dot.info{ background:var(--brand-light); }
+  .log-item .t{ color:var(--ink-soft); font-size:0.68rem; margin-top:0.15rem; }
+  .empty-note{ font-size:0.78rem; color:var(--ink-soft); padding:0.75rem 0; }
+
+  /* ---------- EMS modal ---------- */
+  #ems-root{ position:fixed; inset:0; z-index:90; display:flex; align-items:center; justify-content:center; padding:1rem; pointer-events:none; }
+  #ems-root.open{ pointer-events:auto; }
+  .ems-backdrop{ position:absolute; inset:0; background:rgba(15,47,99,.45); backdrop-filter:blur(6px); opacity:0; transition:opacity .3s; }
+  #ems-root.open .ems-backdrop{ opacity:1; }
+  .ems-panel{ position:relative; width:100%; max-width:26rem; background:var(--surface-card); border-radius:var(--radius-card-lg); padding:1.5rem; opacity:0; transform:translateY(20px) scale(.97); transition:opacity .35s, transform .35s; }
+  #ems-root.open .ems-panel{ opacity:1; transform:translateY(0) scale(1); }
+  .ems-icon{ width:3rem; height:3rem; border-radius:50%; background:rgba(255,90,54,.12); color:var(--accent-signal); display:grid; place-items:center; }
+  .ems-icon svg{ width:1.4rem; height:1.4rem; }
+  .ems-panel h3{ font-size:1.25rem; font-weight:600; margin-top:1rem; }
+  .ems-panel p{ font-size:0.85rem; color:var(--ink-soft); margin-top:0.4rem; }
+  .ems-form{ margin-top:1.1rem; display:flex; flex-direction:column; gap:0.7rem; }
+  .ems-form label{ font-size:0.68rem; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:var(--ink-soft); }
+  .ems-form input, .ems-form select{ width:100%; margin-top:0.3rem; border-radius:0.7rem; border:1px solid var(--hairline); padding:0.6rem 0.8rem; font-size:0.85rem; font-family:inherit; }
+  .ems-form input:focus, .ems-form select:focus{ outline:none; border-color:var(--accent-signal); box-shadow:0 0 0 3px rgba(255,90,54,.15); }
+  .ems-actions{ display:flex; gap:0.6rem; margin-top:1.1rem; }
+  .ems-actions .btn-dark{ background:var(--accent-signal); flex:1; text-align:center; }
+  .ems-actions .btn-dark:hover{ background:#c73d1e; }
+  .ems-success{ display:none; text-align:center; }
+  .ems-success.show{ display:block; }
+  .ems-success .check{ width:3rem; height:3rem; border-radius:50%; background:rgba(31,157,85,.12); color:#1f9d55; display:grid; place-items:center; margin:0 auto; }
+  .ems-success .check svg{ width:1.4rem; height:1.4rem; }
+
+  .footer-note{ text-align:center; font-size:0.72rem; color:var(--ink-soft); margin:1.5rem 0 0.5rem; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="dash">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16l1.6-5.4A3 3 0 0 1 8.5 8.5h7a3 3 0 0 1 2.9 2.1L20 16"/><path d="M3.5 16h17"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
+      <span>CrashDet Control</span>
+    </div>
+    <div class="hdr-right">
+      <span class="status-pill" id="linkStatus"><span class="dot"></span> Connecting…</span>
+      <button class="sos-btn" id="openEms">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M4.4 19h15.2c1.4 0 2.3-1.5 1.6-2.7L13.6 4.6c-.7-1.2-2.5-1.2-3.2 0L2.8 16.3C2.1 17.5 3 19 4.4 19z"/></svg>
+        Contact EMS
+      </button>
+    </div>
+  </header>
+
+  <section class="card" style="margin-top:0.9rem;">
+    <div class="eyebrow">Backend</div>
+    <h2>Server connection</h2>
+    <div class="sub">Point this dashboard at your deployed CrashDet backend so it can receive live reports from the Android app.</div>
+    <div class="payload-actions" style="margin-top:0.9rem;">
+      <input type="text" id="serverUrl" placeholder="https://your-crashdet-server.example.com"
+        style="flex:1; min-width:14rem; padding:0.6rem 0.9rem; border-radius:var(--radius-pill); border:1px solid var(--hairline); font-size:0.82rem; font-family:inherit;">
+      <button class="btn-dark" id="connectServer">Connect</button>
+    </div>
+  </section>
+
+  <div class="grid">
+
+    <!-- LEFT: JSON intake -->
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <div class="eyebrow">Live intake</div>
+          <h2>Incoming crash report</h2>
+          <div class="sub">Drop the JSON payload pushed from the Android edge node.</div>
+        </div>
+      </div>
+
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload JSON crash report">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+        <p>Drag a <b>.json</b> file here, or click to browse</p>
+        <div class="hint">Waiting for a report — nothing has been received yet</div>
+        <input type="file" id="fileInput" accept="application/json,.json">
+      </div>
+
+      <div class="payload-box" id="payloadBox">
+        <div class="payload-meta" id="payloadMeta"></div>
+        <pre class="json-view" id="jsonView"></pre>
+        <div class="payload-actions">
+          <button class="btn-dark" id="logIncident">Log as incident</button>
+          <button class="btn-ghost" id="clearPayload">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: incident log -->
+    <section class="card">
+      <div class="eyebrow">Activity</div>
+      <h2>Incident log</h2>
+      <div class="sub">Latest reports received from the field.</div>
+      <div class="log-list" id="logList">
+        <div class="empty-note" id="logEmpty">No incidents logged yet. Upload a report or send a sample to get started.</div>
+      </div>
+      <div class="payload-actions" style="margin-top:0.9rem;">
+        <button class="btn-ghost" id="sampleBtn">Load sample report</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ANALYTICS -->
+  <div class="grid" style="margin-top:0.9rem; grid-template-columns:1fr;">
+    <div class="kpis">
+      <div class="kpi">
+        <div class="eyebrow">Today</div>
+        <div class="val" id="kpiAccidents">0</div>
+        <div class="sub">Accidents occurred</div>
+        <div class="delta" id="kpiAccidentsDelta"></div>
+        <div class="chart-wrap spark" style="height:2.2rem; margin-top:0.6rem;"><canvas id="sparkAccidents"></canvas></div>
+      </div>
+      <div class="kpi">
+        <div class="eyebrow">Today</div>
+        <div class="val" id="kpiEms">0</div>
+        <div class="sub">EMS deployed</div>
+        <div class="delta" id="kpiEmsDelta"></div>
+        <div class="chart-wrap spark" style="height:2.2rem; margin-top:0.6rem;"><canvas id="sparkEms"></canvas></div>
+      </div>
+      <div class="kpi">
+        <div class="eyebrow">Current</div>
+        <div class="val" id="kpiFreq">0.0</div>
+        <div class="sub">Accidents per hour</div>
+        <div class="delta" id="kpiFreqDelta"></div>
+        <div class="chart-wrap spark" style="height:2.2rem; margin-top:0.6rem;"><canvas id="sparkFreq"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:0.9rem;">
+    <section class="card chart-card">
+      <div class="eyebrow">Trend</div>
+      <h2>Accidents vs. EMS response</h2>
+      <div class="sub">Last 12 hours across the network.</div>
+      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+    </section>
+
+    <section class="card">
+      <div class="eyebrow">Pattern</div>
+      <h2>When accidents happen</h2>
+      <div class="sub">Heatmap of report frequency by hour of day.</div>
+      <div class="heatmap">
+        <div class="heat-grid" id="heatGrid"></div>
+        <div class="heat-labels"><span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span></div>
+        <div class="heat-legend">
+          Fewer
+          <div class="swatches" id="heatSwatches"></div>
+          More
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <p class="footer-note">CrashDet Control · demo data refreshes automatically · report intake accepts JSON only</p>
+</div>
+
+<!-- EMS MODAL -->
+<div id="ems-root" aria-hidden="true">
+  <div class="ems-backdrop" id="emsBackdrop"></div>
+  <div class="ems-panel" role="dialog" aria-modal="true" aria-labelledby="emsTitle">
+    <div class="ems-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M4.4 19h15.2c1.4 0 2.3-1.5 1.6-2.7L13.6 4.6c-.7-1.2-2.5-1.2-3.2 0L2.8 16.3C2.1 17.5 3 19 4.4 19z"/></svg></div>
+    <div id="emsFormWrap">
+      <h3 id="emsTitle">Report crash to EMS</h3>
+      <p>This sends the current report's location and severity straight to dispatch. Confirm the details before sending.</p>
+      <form class="ems-form" id="emsForm">
+        <div>
+          <label for="emsLoc">Location</label>
+          <input id="emsLoc" type="text" value="Auto-filled from report" required>
+        </div>
+        <div>
+          <label for="emsSeverity">Severity</label>
+          <select id="emsSeverity">
+            <option>Unknown — confirm on arrival</option>
+            <option>Minor — no visible injuries reported</option>
+            <option selected>Moderate — possible injuries</option>
+            <option>Severe — high-impact, likely injuries</option>
+          </select>
+        </div>
+        <div class="ems-actions">
+          <button type="button" class="btn-ghost" id="cancelEms">Cancel</button>
+          <button type="submit" class="btn-dark" id="sendEmsBtn">Send to dispatch</button>
+        </div>
+      </form>
+    </div>
+    <div class="ems-success" id="emsSuccess">
+      <div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg></div>
+      <h3>Dispatch notified</h3>
+      <p id="emsSuccessMsg">EMS has been alerted and is en route.</p>
+      <div class="ems-actions"><button class="btn-dark" id="doneEms" style="background:var(--ink);">Done</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------------- live backend connection ---------------- */
+const $ = s => document.querySelector(s);
+let serverUrl = localStorage.getItem("crashdet_server_url") || "";
+let apiKey = localStorage.getItem("crashdet_api_key") || "";
+let sse = null;
+
+function setLinkStatus(state){
+  const el = $("#linkStatus");
+  if(state==="live") el.innerHTML = '<span class="dot"></span> Live — receiving from node';
+  else if(state==="connecting") el.innerHTML = '<span class="dot"></span> Connecting…';
+  else el.innerHTML = '<span class="dot" style="background:#d7dae1;box-shadow:none;"></span> Offline — demo data';
+}
+
+function apiFetch(path, opts={}){
+  const headers = Object.assign({ "Content-Type":"application/json" }, opts.headers||{});
+  if(apiKey) headers["x-api-key"] = apiKey;
+  return fetch(serverUrl.replace(/\/$/,"") + path, Object.assign({}, opts, { headers }));
+}
+
+function connectServer(url){
+  if(sse){ sse.close(); sse=null; }
+  serverUrl = url.trim();
+  localStorage.setItem("crashdet_server_url", serverUrl);
+  if(!serverUrl){ setLinkStatus("offline"); return; }
+
+  setLinkStatus("connecting");
+
+  // load recent history + stats
+  apiFetch("/api/reports?limit=20").then(r=>r.json()).then(data=>{
+    (data.reports||[]).slice().reverse().forEach(r => addLog(`Report received · ${r.device_id} · severity ${r.severity}`, /severe/i.test(r.severity)?"crit":"info"));
+    if(data.reports && data.reports[0]) showPayload(data.reports[0].raw || data.reports[0], "latest report");
+  }).catch(()=>{});
+  refreshStats();
+
+  // live stream
+  try{
+    sse = new EventSource(serverUrl.replace(/\/$/,"") + "/api/reports/stream");
+    sse.addEventListener("connected", ()=> setLinkStatus("live"));
+    sse.addEventListener("report", e=>{
+      const report = JSON.parse(e.data);
+      showPayload(report.raw || report, report.device_id + ".json");
+      addLog(`Live report from ${report.device_id} · severity ${report.severity}`, /severe/i.test(report.severity)?"crit":"info");
+      refreshStats();
+    });
+    sse.addEventListener("dispatch", e=>{
+      const d = JSON.parse(e.data);
+      addLog(`EMS dispatched · ${typeof d.location==="string"?d.location:JSON.stringify(d.location||"")}`, "crit");
+      refreshStats();
+    });
+    sse.onerror = ()=> setLinkStatus("offline");
+  }catch(err){ setLinkStatus("offline"); }
+}
+
+function refreshStats(){
+  if(!serverUrl) return;
+  apiFetch("/api/stats").then(r=>r.json()).then(s=>{
+    stats.accidents = s.accidents_today;
+    stats.ems = s.ems_deployed_today;
+    stats.freq = s.frequency_per_hour;
+    renderKpis();
+    if(s.heat_buckets) renderHeatmap(s.heat_buckets);
+  }).catch(()=>{});
+}
+
+$("#connectServer").addEventListener("click", ()=> connectServer($("#serverUrl").value));
+if(serverUrl){ $("#serverUrl").value = serverUrl; connectServer(serverUrl); }
+else setLinkStatus("offline");
+
+const chartFont = { family:"Onest", size:11 };
+Chart.defaults.font.family = "Onest";
+Chart.defaults.color = "#717784";
+
+/* ---------------- JSON intake ---------------- */
+const dropzone = $("#dropzone"), fileInput = $("#fileInput"), payloadBox = $("#payloadBox"),
+      jsonView = $("#jsonView"), payloadMeta = $("#payloadMeta");
+let currentPayload = null;
+
+dropzone.addEventListener("click", ()=> fileInput.click());
+dropzone.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); fileInput.click(); } });
+["dragover","dragenter"].forEach(evt=> dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.add("drag"); }));
+["dragleave","drop"].forEach(evt=> dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.remove("drag"); }));
+dropzone.addEventListener("drop", e=>{ const f=e.dataTransfer.files[0]; if(f) readFile(f); });
+fileInput.addEventListener("change", e=>{ const f=e.target.files[0]; if(f) readFile(f); });
+
+function readFile(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const data = JSON.parse(reader.result);
+      showPayload(data, file.name);
+    }catch(err){
+      jsonView.textContent = "Could not parse this file as JSON:\n" + err.message;
+      payloadMeta.innerHTML = '<span class="chip crit">Invalid JSON</span>';
+      payloadBox.classList.add("show");
+    }
+  };
+  reader.readAsText(file);
+}
+
+function showPayload(data, filename){
+  currentPayload = data;
+  jsonView.textContent = JSON.stringify(data, null, 2);
+  const sev = (data.severity || data.impact_level || "unknown").toString();
+  payloadMeta.innerHTML = `
+    <span class="chip">${filename || "report.json"}</span>
+    <span class="chip ${/severe|high|critical/i.test(sev) ? "crit" : "ok"}">Severity: ${sev}</span>
+    ${data.device_id ? `<span class="chip">Node: ${data.device_id}</span>` : ""}
+    ${data.timestamp ? `<span class="chip">${data.timestamp}</span>` : ""}
+  `;
+  payloadBox.classList.add("show");
+  if(data.location){
+    $("#emsLoc").value = typeof data.location === "string" ? data.location : JSON.stringify(data.location);
+  }
+}
+
+$("#clearPayload").addEventListener("click", ()=>{
+  currentPayload = null; payloadBox.classList.remove("show"); fileInput.value = "";
+});
+
+$("#sampleBtn").addEventListener("click", ()=>{
+  const sample = {
+    device_id: "node-0417",
+    timestamp: new Date().toISOString(),
+    location: { lat: 30.2672, lng: -97.7431, label: "5th St & Congress Ave" },
+    severity: "severe",
+    impact_g: 8.4,
+    confidence: 0.93
+  };
+  showPayload(sample, "sample_report.json");
+  addLog(`Sample crash report received from ${sample.device_id}`, "crit");
+});
+
+$("#logIncident").addEventListener("click", ()=>{
+  if(!currentPayload) return;
+  addLog(`Incident logged · ${currentPayload.device_id || "unknown node"} · severity ${currentPayload.severity || "n/a"}`, "info");
+  bumpKpi("accidents");
+});
+
+/* ---------------- incident log ---------------- */
+const logList = $("#logList"), logEmpty = $("#logEmpty");
+function addLog(text, type){
+  if(logEmpty) logEmpty.remove();
+  const el = document.createElement("div");
+  el.className = "log-item";
+  const now = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+  el.innerHTML = `<span class="log-dot ${type}"></span><div><div>${text}</div><div class="t">${now}</div></div>`;
+  logList.prepend(el);
+}
+
+/* ---------------- KPI counters ---------------- */
+let stats = { accidents: 18, ems: 14, freq: 1.4 };
+function renderKpis(){
+  $("#kpiAccidents").textContent = stats.accidents;
+  $("#kpiEms").textContent = stats.ems;
+  $("#kpiFreq").textContent = stats.freq.toFixed(1);
+  $("#kpiAccidentsDelta").innerHTML = `<span class="up">▲ 3</span> vs. yesterday`;
+  $("#kpiEmsDelta").innerHTML = `<span class="down">▼ 1</span> vs. yesterday`;
+  $("#kpiFreqDelta").innerHTML = `steady over the last hour`;
+}
+function bumpKpi(which){
+  if(which==="accidents"){ stats.accidents++; stats.ems += Math.random()>0.3?1:0; stats.freq = +(stats.freq + 0.1).toFixed(1); }
+  if(which==="ems"){ stats.ems++; }
+  renderKpis();
+}
+renderKpis();
+
+/* ---------------- sparklines ---------------- */
+function spark(id, data, color){
+  new Chart(document.getElementById(id), {
+    type:"line",
+    data:{ labels:data.map((_,i)=>i), datasets:[{ data, borderColor:color, borderWidth:2, tension:.4, pointRadius:0, fill:true, backgroundColor: color+"22" }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{enabled:false} },
+      scales:{ x:{display:false}, y:{display:false} },
+      elements:{ line:{ borderJoinStyle:"round" } }
+    }
+  });
+}
+spark("sparkAccidents", [3,5,4,6,5,7,6,8,7,9], "#2563c9");
+spark("sparkEms", [2,4,3,4,4,5,5,6,6,7], "#0b6e97");
+spark("sparkFreq", [1.0,1.1,0.9,1.2,1.3,1.1,1.4,1.3,1.5,1.4], "#ff5a36");
+
+/* ---------------- trend chart ---------------- */
+const hours = Array.from({length:12}, (_,i)=> `${(i*2)}:00`);
+new Chart(document.getElementById("trendChart"), {
+  type:"bar",
+  data:{
+    labels: hours,
+    datasets:[
+      { label:"Accidents occurred", data:[1,2,1,3,2,4,3,5,4,6,3,2], backgroundColor:"#2563c9", borderRadius:6, barPercentage:0.55 },
+      { label:"EMS deployed", data:[1,1,1,2,2,3,3,4,3,5,3,2], backgroundColor:"#0b6e97", borderRadius:6, barPercentage:0.55 }
+    ]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ position:"bottom", labels:{ boxWidth:10, boxHeight:10, usePointStyle:true, pointStyle:"circle" } } },
+    scales:{ x:{ grid:{display:false} }, y:{ grid:{ color:"#e6e8ec" }, beginAtZero:true } }
+  }
+});
+
+/* ---------------- heatmap: most common accident times ---------------- */
+const heatGrid = $("#heatGrid"), heatSwatches = $("#heatSwatches");
+const heatColors = ["#eef1f6","#cfe0f7","#9fc2ef","#6fa3e6","#2563c9","#0f2f63"];
+function colorFor(v, maxHeat){
+  const t = maxHeat ? v / maxHeat : 0;
+  const idx = Math.min(heatColors.length-1, Math.floor(t * heatColors.length));
+  return heatColors[idx];
+}
+function renderHeatmap(heatData){
+  const maxHeat = Math.max(1, ...heatData);
+  heatGrid.innerHTML = "";
+  heatData.forEach((v,h)=>{
+    const cell = document.createElement("div");
+    cell.className = "heat-cell";
+    cell.style.background = colorFor(v, maxHeat);
+    cell.setAttribute("data-label", `${h.toString().padStart(2,"0")}:00 — ${v} report${v===1?"":"s"}`);
+    heatGrid.appendChild(cell);
+  });
+}
+renderHeatmap([1,0,0,1,2,3,5,7,6,4,3,4,5,6,7,8,9,10,8,6,4,3,2,1]); // demo data until a server connects
+heatColors.forEach(c=>{
+  const sw = document.createElement("div"); sw.className="sw"; sw.style.background=c; heatSwatches.appendChild(sw);
+});
+
+/* ---------------- EMS modal ---------------- */
+const emsRoot = $("#ems-root"), emsForm = $("#emsForm"), emsFormWrap = $("#emsFormWrap"), emsSuccess = $("#emsSuccess");
+function openEms(){ emsRoot.classList.add("open"); emsRoot.setAttribute("aria-hidden","false"); }
+function closeEms(){
+  emsRoot.classList.remove("open"); emsRoot.setAttribute("aria-hidden","true");
+  setTimeout(()=>{ emsFormWrap.style.display=""; emsSuccess.classList.remove("show"); $("#sendEmsBtn").disabled=false; $("#sendEmsBtn").textContent="Send to dispatch"; }, 300);
+}
+$("#openEms").addEventListener("click", openEms);
+$("#emsBackdrop").addEventListener("click", closeEms);
+$("#cancelEms").addEventListener("click", closeEms);
+$("#doneEms").addEventListener("click", closeEms);
+addEventListener("keydown", e=>{ if(e.key==="Escape" && emsRoot.classList.contains("open")) closeEms(); });
+
+emsForm.addEventListener("submit", e=>{
+  e.preventDefault();
+  const btn = $("#sendEmsBtn"); btn.disabled = true; btn.textContent = "Sending…";
+  const payload = {
+    report_id: currentPayload && currentPayload.id ? currentPayload.id : null,
+    location: $("#emsLoc").value,
+    severity: $("#emsSeverity").value,
+  };
+  const finish = () => {
+    emsFormWrap.style.display = "none";
+    emsSuccess.classList.add("show");
+    $("#emsSuccessMsg").textContent = `EMS has been alerted for ${payload.location} — severity: ${payload.severity}.`;
+    if(!serverUrl){ addLog(`EMS dispatched · ${payload.location}`, "crit"); bumpKpi("ems"); }
+  };
+  if(serverUrl){
+    apiFetch("/api/ems/dispatch", { method:"POST", body: JSON.stringify(payload) })
+      .then(()=> finish())
+      .catch(()=> finish());
+  } else {
+    setTimeout(finish, 700);
+  }
+});
+</script>
+</body>
+</html>
