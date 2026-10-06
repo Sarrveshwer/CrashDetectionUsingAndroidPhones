@@ -1,0 +1,170 @@
+# 3-STAGE CRASH DETECTION SYSTEM - PROBLEMS & DECISION LOG
+# Generated: 2026-08-26
+# For: Technical Consultation
+
+---
+
+## EXECUTIVE SUMMARY
+
+Building a 3-stage crash detection system for CCTV feeds. Current state: **MVP working but fundamental architecture issues identified**. Need architectural review before proceeding.
+
+**Current Pipeline** (single file: `trying/src/stage1_motion_gate.py`):
+- Stage 1: Motion gate (frame differencing + adaptive threshold)
+- Stage 2: Feature extraction (heading, aspect-ratio, flow spike, fragmentation)
+- Stage 3: Rule-based classifier (collision/rollover/normal)
+
+**Output**: Annotated video + real-time logs. Runs at ~15 FPS on laptop.
+
+---
+
+## CORE PROBLEMS IDENTIFIED
+
+### 1. THRESHOLD MODIFIER NOT WORKING WELL
+- **Current**: EMA with alpha=0.001 (33-sec time constant) - too slow for lighting changes
+- **No pre-incident baseline** (EMAS uses 5-min rolling median)
+- **No calibration persistence** - recalibrates 300 frames every restart
+- **Day/night transition** flickers, no twilight handling
+- **Freeze logic** only on alerts, not on lighting changes
+
+### 2. VIDEO-ONLY DETECTION FUNDAMENTALLY LIMITED
+- **EMAS uses loop detectors** (ground truth occupancy/speed) as primary
+- **We use video-only** - noisy, perspective-distorted, lighting-sensitive
+- **No dual-station comparison** (EMAS compares upstream/downstream)
+- **No algorithm fusion** - single AND-logic classifier vs EMAS weighted fusion
+
+### 3. TRACKING & FEATURES UNRELIABLE
+- Centroid tracking fails at occlusions/intersections
+- Optical flow (Farneback) sensitive to camera vibration, parallax
+- No ego-motion compensation
+- Aspect-ratio oscillation confounded by perspective changes
+- Fragmentation = tracker failures, not just incidents
+
+### 4. TESTING WILL TAKE TOO LONG
+- No automated evaluation harness
+- No ground truth labels
+- Manual video review = hours per iteration
+- Need synthetic ground truth + automated metrics
+
+### 5. EDGE CASES UNHANDLED (20+ identified)
+- Weather (rain/fog/night glare), congestion, tunnels, lane changes
+- Rollover vs perspective change, motorcycle vs truck dynamics
+- Multi-vehicle pileup vs single collision
+- Camera vibration, PTZ, compression artifacts
+
+---
+
+## EMAS SYSTEM (SINGAPORE) - KEY REFERENCE ARCHITECTURE
+
+| Component | EMAS (Production) | Our System |
+|-----------|-------------------|------------|
+| **Primary Sensor** | Loop detectors (occupancy/speed) | Video only |
+| **Detection Logic** | Dual-station (upstream vs downstream) | Single camera |
+| **Algorithm** | Fusion: CODE + DV + Flow-CODE (weighted) | Single rule-based AND |
+| **Baseline** | 5-min pre-incident rolling median | None |
+| **Calibration** | Months of loop data per site | 300 frames (10 sec) |
+| **Verification** | Human operator (mandatory) | Auto-only |
+| **False Alarm Target** | < 1% (achieved 0.2-1.0%) | Unknown (>20% likely) |
+
+**Key Papers**: Mak & Fan (2002-2007) - CTE incident data, algorithm fusion, transferability to Melbourne.
+
+---
+
+## CURRENT FILE STRUCTURE
+
+```
+trying/
+├── src/
+│   ├── stage1_motion_gate.py   # ALL logic (27KB, single file)
+│   └── utils/config_loader.py  # CameraConfig + YAML I/O
+├── ASSUMPTIONS_AND_EDGE_CASES.md  # Full analysis
+└── problems.txt                 # THIS FILE
+```
+
+**Consolidated from**: 6 files in `threshold/` + `utils/` → 2 files
+
+---
+
+## IMMEDIATE DECISIONS NEEDED
+
+### Architecture (Choose One)
+1. **Video-only, improve current** - Add fusion, baseline, better tracking
+2. **Hybrid** - Add simulated loop data / synthetic ground truth
+3. **Pivot** - Integrate real loop detector data (PeMS, LTA DataMall)
+
+### Threshold System (Choose One)
+1. **Fix current EMA** - Add per-mode rates, persistence, baseline
+2. **Replace with EMAS-style** - Pre-incident baseline + deviation scoring
+3. **ML-based** - Train on labeled data (need labels first)
+
+### Tracking (Choose One)
+1. **Keep centroid** - Fast, add appearance features for re-ID
+2. **Upgrade to ByteTrack/BoT-SORT** - More accurate, slower
+3. **Simulate loop detectors** - Per-lane virtual loops from video
+
+### Testing Strategy (Choose One)
+1. **Build automated harness first** - 2 hrs setup, minutes per iteration
+2. **Manual spot-check** - Hours per cycle, not sustainable
+3. **Synthetic data** - Generate known scenarios, validate logic
+
+---
+
+## FILES TO REVIEW
+
+1. **`trying/src/stage1_motion_gate.py`** - Complete pipeline (27KB)
+2. **`trying/ASSUMPTIONS_AND_EDGE_CASES.md`** - Full technical analysis
+3. **`trying/problems.txt`** - This file
+4. **`trying/utils/config_loader.py`** - Config I/O
+
+---
+
+## SPECIFIC QUESTIONS FOR CONSULTATION
+
+1. **Is video-only crash detection viable for production?**
+   - EMAS says no (uses loops + human verification)
+   - But maybe for low-cost retrofit where loops don't exist?
+
+2. **How to get EMAS-grade false alarm rate (<1%) with video-only?**
+   - Need algorithm fusion + pre-incident baseline + human verification
+   - Or accept higher false alarm rate for low-cost deployment?
+
+3. **Calibration strategy for 100+ cameras?**
+   - 300-frame startup per camera = 50 min per camera
+   - Need transfer learning / config sharing / auto-calibration
+
+4. **Tracking approach for CCTV angles?**
+   - Centroid fails at oblique angles
+   - ByteTrack needs appearance features (compute cost)
+   - Virtual loop detectors per lane?
+
+5. **Testing without months of labeled data?**
+   - Synthetic ground truth from simulator (CARLA/SUMO)?
+   - Semi-supervised: auto-label + human correction?
+   - Focus on specific incident types first?
+
+6. **Deployment constraints (Android phone edge)?**
+   - Current: ~15 FPS on laptop, Farneback flow = 15ms/frame
+   - Need: <30ms/frame on Snapdragon 600 series
+   - May need to drop optical flow or use lighter tracker
+
+---
+
+## NEXT ACTIONS (IF GREENLIGHT)
+
+1. **Week 1**: Build automated test harness + synthetic ground truth
+2. **Week 2**: Implement EMAS-style pre-incident baseline + algorithm fusion
+3. **Week 3**: Calibration persistence + per-camera config
+4. **Week 4**: ByteTrack integration + Android benchmark
+
+---
+
+## CONTACT / CONTEXT
+
+- **Project**: Road Incident Detection & Emergency Response System
+- **Team**: 3 students (AI/Video, Android, Backend/Dashboard)
+- **Hardware**: Repurposed Android phones (Snapdragon 600+, 3-4GB RAM)
+- **Cameras**: Existing CCTV (RTSP, fixed, uncalibrated, various angles)
+- **Timeline**: Academic project, Phase 2 (weeks 4-8 of 14)
+
+---
+
+*End of problems.txt - Ready for consultation*
