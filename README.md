@@ -368,22 +368,6 @@ CrashDetectionUsingAndroidPhones/
 
 ---
 
-## Testing Checklist
-
-- [ ] Gate calibration: stable threshold after 9000 frames of normal traffic
-- [ ] Day/night/twilight mode transitions with hysteresis
-- [ ] Motion state machine: MOVING→STOPPED→STATIONARY→PARKED
-- [ ] Pair conflict: approaching vehicles, crossing paths, rear-end scenarios
-- [ ] Collision veto: both stationary, insufficient closing velocity, no impact signature
-- [ ] Heartbeat timeout: device → OFFLINE after 5min without heartbeat
-- [ ] Socket reconnection: client survives server restart without losing state
-- [ ] Auth: JWT expiry handling, protected routes redirect correctly
-- [ ] Dispatch flow: VERIFIED→DISPATCHED→RESPONDING→RESOLVED
-- [ ] Unit availability: can't dispatch a unit that's UNAVAILABLE
-- [ ] Calibration persistence: baselines saved/loaded across server restarts
-
----
-
 ## Extension Points (Future Enhancements)
 
 1. **Android App Integration:** Implement YOLO + gate.py logic directly on device (currently Python-only processing)
