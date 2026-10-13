@@ -3,6 +3,7 @@ __pycache__/
 *.py[codz]
 *$py.class
 server/uploads/incidents/*
+!server/uploads/incidents/.gitkeep
 .mp4
 # C extensions
 *.so
