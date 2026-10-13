@@ -323,7 +323,6 @@ If collision detected:
 
 ```
 CrashDetectionUsingAndroidPhones/
-├── document.txt          # Comprehensive system documentation (454 lines)
 ├── README.md            # This file - Project overview + workflow
 ├── .git/
 ├── .env                # Environment variables (local setup only)
