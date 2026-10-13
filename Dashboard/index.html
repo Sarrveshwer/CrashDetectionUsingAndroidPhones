@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CrashDet — Control Dashboard</title>
+<meta name="description" content="Live crash intake and analytics dashboard for CrashDet edge nodes.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap"></noscript>
+<link rel="stylesheet" href="theme.css">
+<link rel="preconnect" href="https://cdn.socket.io" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+</head>
+<body>
+<div class="wrap">
+  <div id="chrome"></div>
+
+  <div class="page-head">
+    <div>
+      <h1>Overview</h1>
+      <div class="sub">Live crash reports and response activity across your network.</div>
+    </div>
+    <div class="updated" id="updatedAt"></div>
+  </div>
+
+  <!-- latest incident -->
+  <section id="hero" class="hero clear" aria-live="polite"></section>
+
+  <!-- KPIs -->
+  <div class="kpis">
+    <div class="kpi">
+      <div class="eyebrow">Today</div>
+      <div class="val" id="kpiAccidents">0</div>
+      <div class="sub">Accidents occurred</div>
+      <div class="chart-wrap spark" style="height:2.2rem;margin-top:.6rem"><canvas id="sparkAccidents"></canvas></div>
+    </div>
+    <div class="kpi">
+      <div class="eyebrow">Today</div>
+      <div class="val" id="kpiEms">0</div>
+      <div class="sub">EMS deployed</div>
+      <div class="chart-wrap spark" style="height:2.2rem;margin-top:.6rem"><canvas id="sparkEms"></canvas></div>
+    </div>
+    <div class="kpi">
+      <div class="eyebrow">Current</div>
+      <div class="val" id="kpiFreq">0.0</div>
+      <div class="sub">Accidents per hour</div>
+      <div class="chart-wrap spark" style="height:2.2rem;margin-top:.6rem"><canvas id="sparkFreq"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid two">
+    <!-- incidents -->
+    <section class="card fill">
+      <div class="list-head">
+        <div>
+          <div class="eyebrow">Activity</div>
+          <h2>Incidents</h2>
+          <div class="sub">Select a report to review it.</div>
+        </div>
+        <div class="chips" id="incFilters" role="group" aria-label="Filter incidents">
+          <button class="chip" type="button" data-f="all" aria-pressed="true">All</button>
+          <button class="chip" type="button" data-f="pending" aria-pressed="false">Needs review</button>
+          <button class="chip" type="button" data-f="active" aria-pressed="false">In progress</button>
+          <button class="chip" type="button" data-f="done" aria-pressed="false">Closed</button>
+        </div>
+      </div>
+      <div class="inc-list" id="incList"></div>
+    </section>
+    <div class="stack">
+      <section class="card chart-card">
+        <div class="eyebrow">Trend</div>
+        <h2>Accidents vs. EMS response</h2>
+        <div class="sub">Last 12 hours across the network.</div>
+        <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+      </section>
+      <section class="card">
+        <div class="eyebrow">Pattern</div>
+        <h2>When accidents happen</h2>
+        <div class="sub">Report frequency by hour of day.</div>
+        <div class="heatmap">
+          <div class="heat-grid" id="heatGrid"></div>
+          <div class="heat-labels"><span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span></div>
+          <div class="heat-legend">Fewer <div class="swatches" id="heatSwatches"></div> More</div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card response-card">
+      <div class="eyebrow">Dispatch oversight</div>
+      <h2>EMS response tracker</h2>
+      <div class="sub">Confirmed incidents remain listed whether EMS is dispatched, pending, or responding.</div>
+      <div id="responseList" class="response-list" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <p class="footer-note">CrashDet Control</p>
+</div>
+
+<script defer src="core.js"></script>
+<script defer src="dashboard.js"></script>
+</body>
+</html>

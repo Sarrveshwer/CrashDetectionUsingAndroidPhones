@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CrashDet — Developer tools</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap"></noscript>
+<link rel="stylesheet" href="theme.css">
+<link rel="preconnect" href="https://cdn.socket.io" crossorigin>
+</head>
+<body>
+<div class="wrap">
+  <div id="chrome"></div>
+
+  <div class="dev-banner">This page is for setup and testing. Operators don't need it.</div>
+
+  <div class="grid two">
+    <div class="stack">
+      <section class="card">
+        <div class="eyebrow">Backend</div>
+        <h2>Server connection</h2>
+        <div class="sub">Connect this dashboard to the CrashDet Node.js API. Protected routes use the same JWT authentication as the backend.</div>
+        <div class="row">
+          <input class="dev-field" type="text" id="serverUrl" placeholder="http://localhost:5000" autocomplete="off">
+          <input class="dev-field" type="password" id="jwtToken" placeholder="JWT token" autocomplete="off">
+        </div>
+        <div class="row">
+          <button class="btn-dark" id="connectServer" type="button">Connect</button>
+          <button class="btn-ghost" id="disconnectServer" type="button">Disconnect and forget</button>
+          <span class="sub" id="connResult" style="margin:0"></span>
+        </div>
+        <div class="sub" style="margin-top:.7rem">The token is stored only in this browser's localStorage and is sent as <code>Authorization: Bearer &lt;token&gt;</code>.</div>
+      </section>
+
+      <section class="card">
+        <div class="eyebrow">Testing</div>
+        <h2>Incident intake</h2>
+        <div class="sub">Load a crash report from a JSON file to preview it in the review dialog, or register it with the backend.</div>
+        <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload JSON crash report">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+          <p>Drag a <b>.json</b> file here, or click to browse</p>
+          <div class="hint">Nothing loaded yet</div>
+          <input type="file" id="fileInput" accept="application/json,.json">
+        </div>
+        <div class="payload-box" id="payloadBox">
+          <div class="payload-meta" id="payloadMeta"></div>
+          <pre class="json-view" id="jsonView"></pre>
+          <div class="row">
+            <button class="btn-dark" id="previewIncident" type="button">Preview in dialog</button>
+            <button class="btn-dark" id="logIncident" type="button">Log as incident</button>
+            <button class="btn-ghost" id="clearPayload" type="button">Clear</button>
+          </div>
+        </div>
+        <div class="row"><button class="btn-ghost" id="sampleBtn" type="button">Load sample report</button></div>
+      </section>
+    </div>
+
+    <div class="stack">
+      <section class="card">
+        <div class="card-head">
+          <div><div class="eyebrow">Diagnostics</div><h2>System log</h2><div class="sub">Connection, realtime and request messages from every page.</div></div>
+          <button class="btn-ghost" id="clearLog" type="button">Clear</button>
+        </div>
+        <div class="log-list" id="logList" style="max-height:24rem"></div>
+      </section>
+
+      <section class="card">
+        <details class="api">
+          <summary>API contract used by this dashboard</summary>
+<pre>Public
+  POST  /api/auth/login
+  POST  /api/incidents/report
+  POST  /api/incidents/report-video   (multipart/form-data)
+  POST  /api/devices/register
+  POST  /api/devices/:deviceId/heartbeat
+
+Protected (JWT)
+  GET   /api/auth/me
+  GET   /api/dashboard/stats
+  GET   /api/incidents/
+  PATCH /api/incidents/:id/verify
+  PATCH /api/incidents/:id/reject
+  POST  /api/incidents/:id/dispatch
+  POST  /api/incidents/:id/respond
+  POST  /api/incidents/:id/resolve
+  GET   /api/cameras/        GET /api/cameras/:id
+  GET   /api/devices/        GET /api/devices/:deviceId
+  GET   /api/units/
+  GET   /api/reports/
+
+Admin only
+  POST/PUT/DELETE  /api/cameras/(:id)
+  POST/PUT/DELETE  /api/units/(:id)
+
+Realtime (Socket.IO)
+  incident:new · incident:update · incident:dispatched
+  incident:responding · incident:resolved
+  device:registered · device:online · device:offline · device:update
+  dashboard:update</pre>
+        </details>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script defer src="core.js"></script>
+
+</body>
+</html>
