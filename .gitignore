@@ -1,0 +1,44 @@
+*.iml
+.venv
+.mp4
+.kotlin
+.idea
+__pycache__/
+.apk
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+/.idea/*
+.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+
+# Android / Gradle build output
+.gradle/
+build/
+app/build/
+local.properties
+# Node
+node_modules/
+client/node_modules/
+server/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env & Logs
+.env
+server/.env
+*.log
+server.log
+mongod.log
+
+# Uploads
+server/uploads/*
+

@@ -1,0 +1,454 @@
+┌─────────────────────────────────────────────────────────────────┐
+│                     BACKEND SERVER (Node.js)                    │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌───────────┐ │
+│  │ REST API    │ │ Socket.io   │ │ MongoDB     │ │ Auth      │ │
+│  │ /api/*      │ │ Real-time   │ │ Persistence │ │ JWT       │ │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └───────────┘ │
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    WEB CLIENT (React)                           │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌───────────┐ │
+│  │ Dashboard   │ │ Live        │ │ Dispatch    │ │ Device/   │ │
+│  │ Stats       │ │ Incidents   │ │ Control     │ │ Camera    │ │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └───────────┘ │
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Python Crash Detection Engine (gate.py, gate_v2.py)
+This is the core detection logic - a motion gate + tracking/collision pipeline.
+Key Classes
+BaselineState (gate.py:55-113)
+Manages adaptive threshold calibration per lighting mode (day/twilight/night).
+Fields:
+- scores - Rolling window of physics scores
+- median, mad - Robust statistics
+- threshold - Dynamic trigger threshold
+- calibrated - Whether baseline is established
+- calibration_mode - "frozen" or "adaptive"
+- freeze_until - Timestamp preventing learning during alerts
+- consecutive_above - Persistence counter
+Methods:
+- update_baseline(window_size) - Recomputes median/MAD from recent scores
+- compute_threshold(k_mad) - Threshold = max(median + k*MAD, 99th percentile)
+- add_score(score) - Adds clipped score to window
+- check_trigger(score, threshold) - Returns true if score > threshold for N frames
+- is_frozen() - Checks freeze timer
+- trigger_freeze(seconds) - Prevents learning during active events
+DayNightClassifier (gate.py:115-164)
+Classifies frames by brightness with hysteresis.
+Thresholds: day>80, night<50, twilight in between
+Hysteresis: 10 units, persist 60 frames before mode switch
+Forced mode: Override via constructor
+AutoThresholdManager (gate.py:166-300)
+Manages per-mode baselines, loads/saves JSON snapshots.
+Key parameters:
+- camera_id - Baseline namespace
+- k_mad=2.0 - Threshold multiplier
+- persist_frames=7, persist_window=12 - Trigger persistence
+- window_size=9000 - Score history (5 min at 30fps)
+- calibration_target_frames=9000 - Frames before first calibration
+Update flow: (line 258-299)
+1. Classify frame → get mode baseline
+2. If alert/collision/frozen → skip learning, return current threshold
+3. If not calibrated or adaptive → add score to window
+4. If enough samples and not calibrated → calibrate (median, MAD, threshold)
+5. If calibrated & adaptive → adapt threshold periodically
+6. Check trigger persistence
+7. Auto-save baselines every 5 seconds
+StabilityMonitor (gate.py:312-361)
+Verifies baseline has stabilized before allowing early exit from calibration.
+Criteria:
+- Min 9000 frames, 8+ snapshots over 3000-frame window
+- Threshold variation < 0.008
+- Median drift < 0.015, MAD drift < 0.015
+- MAD not too small, threshold not at bounds
+MotionGate (gate.py:363-421)
+Stage 1: Frame differencing physics score + adaptive threshold.
+Physics score: absdiff(prev_gray, curr_gray) > 25 → pixel ratio × 10
+Smoothing: Rolling mean over physics_window frames (default 5)
+Alert cooldown: 90 frames after trigger
+FeatureExtractor (gate.py:560-1013)
+Stage 2: YOLO detections → tracking + pair features.
+Tracking:
+- Hungarian-like greedy assignment by normalized bottom-center distance
+- Max miss frames = 15
+- Predicts positions via constant velocity when no detection
+- Distinguishes predicted vs observed tracks
+Motion states: UNKNOWN → MOVING/STATIONARY → STOPPED → PARKED
+- EMA speed, hysteresis on enter/exit moving
+- Parked: never moved + stationary > 150 frames
+Pair features (only updated when BOTH tracks have fresh observations):
+- Normalized distance, closing velocity, TTC, min separation
+- Conflict: closing > 0.015, t_closest ≤ 12 frames, min_sep ≤ 0.85
+- IoU tracked but diagnostic only
+- Impact: decel event + heading change within 5 frames
+Optical flow: Sparse LK on detection ROI → flow angle std as turbulence measure
+RuleClassifier (gate.py:1016-1147)
+Stage 3: Collision verdict from trajectory conflict + temporally linked impact.
+Pair collision criteria:
+- Fresh observations on both tracks (max_pair_age=1 frame default)
+- Not both stationary/parked
+- Closing velocity ≥ 0.025
+- Recent conflict (age ≤ 5 frames), min_sep ≤ 0.85
+- Impact signature on at least one vehicle:
+- Decel event (speed drop ≥ 45% from ≥ 0.05)
+- OR heading change ≥ 0.55 rad + impact
+Voting: k-of-m (2 of 4) over recent frames per pair/track
+Cooldown: 30 frames per track
+Rollover detection (moving vehicles only):
+- AR oscillation ≥ 0.6, ≥ 4 peaks, heading P90 ≥ 0.9
+gate_v2.py - Enhanced Stage 1
+- EMA smoothing on physics score (α=0.4)
+- X-of-Y persistence (7 of 12) instead of consecutive
+- Raw spike escape: raw ≥ threshold + max(0.05, 10% threshold)
+- Exposes trigger components for rendering
+2. Android Java Port (accident/ directory)
+Java implementation of the same pipeline for on-device inference.
+Files
+File	Lines
+AccidentEngine.java	3443
+AutoThresholdManager.java	9711
+FeatureExtractor.java	25301
+RuleClassifier.java	8504
+MotionGate.java	5346
+Track.java	5809
+BaselineState.java	4938
+DayNightClassifier.java	3161
+StabilityMonitor.java	2062
+PairFeatures.java	2467
+Detection.java	814
+GateResult.java	609
+AccidentResult.java	1731
+3. Backend Server (server/)
+Stack
+- Runtime: Node.js (Express)
+- Database: MongoDB (Mongoose ODM)
+- Real-time: Socket.io
+- Auth: JWT (30-day expiry, bcrypt password hash)
+Project Structure
+server/
+├── config/
+│   └── db.js                    # MongoDB connection
+├── controllers/
+│   ├── authController.js        # Login/logout/me
+│   ├── cameraController.js      # CRUD cameras
+│   ├── incidentController.js    # Incident lifecycle
+│   ├── deviceController.js      # Edge device registration/heartbeat
+│   ├── dashboardController.js   # Aggregate stats
+│   └── unitController.js        # Emergency unit CRUD
+├── middleware/
+│   └── auth.js                  # JWT protect + adminOnly
+├── models/
+│   ├── Camera.js                # Camera registry
+│   ├── EdgeDevice.js            # Android device registry
+│   ├── EmergencyUnit.js         # Ambulance/Police/Fire units
+│   ├── Incident.js              # Crash incidents
+│   ├── Notification.js          # User notifications
+│   ├── SystemLog.js             # Audit log
+│   └── User.js                  # Admin/operator accounts
+├── routes/
+│   ├── authRoutes.js            # /api/auth
+│   ├── cameraRoutes.js          # /api/cameras
+│   ├── incidentRoutes.js        # /api/incidents
+│   ├── deviceRoutes.js          # /api/devices
+│   ├── unitRoutes.js            # /api/units
+│   └── reportRoutes.js          # /api/reports (placeholder)
+├── utils/
+│   └── deviceStatus.js          # HEARTBEAT_TIMEOUT=5min, getEffectiveStatus
+└── server.js                    # Entry point, Socket.io setup
+API Endpoints
+Auth (/api/auth)
+Method	Path	Access
+POST	/login	Public
+POST	/logout	Private
+GET	/me	Private
+Cameras (/api/cameras)
+Method	Path	Access
+GET	/	Private
+GET	/:id	Private
+POST	/	Admin
+PUT	/:id	Admin
+DELETE	/:id	Admin
+Camera Model: name, cameraId(unique), location, lat/lng, rtspUrl, deviceId, status(ONLINE/OFFLINE/MAINTENANCE), lastHeartbeat
+Edge Devices (/api/devices)
+Method	Path	Access
+POST	/register	Public
+POST	/:deviceId/heartbeat	Public
+GET	/	Private
+GET	/:deviceId	Private
+EdgeDevice Model: deviceId(unique), name, model, androidVersion, appVersion, ipAddress, cameraId, status, lastHeartbeat, lat/lng
+Incidents (/api/incidents)
+Method	Path	Access
+GET	/	Private
+POST	/report	Public
+POST	/report-video	Public
+PATCH	/:id/verify	Private
+PATCH	/:id/reject	Private
+POST	/:id/dispatch	Private
+POST	/:id/respond	Private
+POST	/:id/resolve	Private
+Incident Status Flow:
+PENDING_VERIFICATION → VERIFIED → DISPATCHED → RESPONDING → RESOLVED
+                          ↓
+                      FALSE_POSITIVE
+Incident Model: cameraId(ref), edgeDeviceId, cameraName, timestamp, location(lat/lng/address), snapshotImage, confidence, status, dispatchedAt, respondingAt, resolvedAt, assignedUnit, operatorNotes, incidentType(default CRASH), vehicleCount, verifiedBy(ref), verificationTime, videoUrl
+Emergency Units (/api/units)
+Method	Path	Access
+GET	/	Private
+POST	/	Admin
+PUT	/:id	Admin
+DELETE	/:id	Admin
+Unit Model: unitId(unique), unitName, unitType(AMBULANCE/POLICE/FIRE), status(AVAILABLE/DISPATCHED/RESPONDING/UNAVAILABLE), currentLocation
+Dashboard (/api/dashboard)
+Method	Path	Access
+GET	/stats	Private
+Stats returned: camera/device counts (total/online/offline), incident counts by status, todayIncidents, recentAlerts(10), systemStatus
+Socket.io Events
+Server → Client:
+- incident:new - New PENDING_VERIFICATION incident
+- incident:update - Status change (verify/reject)
+- incident:dispatched - Unit assigned
+- incident:responding - Unit en route
+- incident:resolved - Incident closed
+- dashboard:update - Trigger stats refresh
+- device:registered - New edge device
+- device:online / device:offline - Status change
+- device:update - Device heartbeat update
+Client → Server:
+- join:admin - Join admin room for broadcasts
+Database Indexes (Implicit)
+- Camera: cameraId unique
+- EdgeDevice: deviceId unique
+- EmergencyUnit: unitId unique
+- Incident: cameraId, status, createdAt
+- User: email unique
+Environment Variables
+MONGODB_URI=mongodb://localhost:27017/crashdetection
+JWT_SECRET=your-secret
+PORT=5000
+NODE_ENV=development
+4. Web Client (client/)
+Stack
+- Framework: React 18 + Vite
+- Routing: React Router v6
+- State: React Context (Auth) + Local State
+- Real-time: Socket.io-client
+- Styling: Tailwind CSS
+- Icons: Lucide React
+- HTTP: Axios
+Project Structure
+client/src/
+├── main.jsx                 # Entry, BrowserRouter + AuthProvider
+├── App.jsx                  # Root component
+├── routes/
+│   └── AppRouter.jsx        # Route definitions
+├── context/
+│   └── AuthContext.jsx      # JWT auth state, login/logout
+├── hooks/
+│   └── useSocket.js         # Socket.io event subscriptions
+├── services/
+│   └── socket.js            # Socket.io client singleton
+├── layout/
+│   ├── MainLayout.jsx       # Sidebar + Navbar + Outlet
+│   ├── Sidebar.jsx          # Navigation (11 routes)
+│   └── Navbar.jsx           # Top bar with user info
+├── components/
+│   └── ProtectedRoute.jsx   # Redirects to /login if no auth
+└── pages/
+    ├── Login.jsx            # Login form (demo: admin@emergency.gov/admin123)
+    ├── Dashboard.jsx        # Stats grid + recent alerts table
+    ├── LiveIncidents.jsx    # Real-time incident cards, verify/reject
+    ├── IncidentHistory.jsx  # Placeholder filterable history
+    ├── CameraManagement.jsx # Camera CRUD UI
+    ├── EdgeDeviceManagement.jsx # Device registry + status
+    ├── EmergencyUnitManagement.jsx # Unit CRUD modal
+    ├── EmergencyDispatch.jsx # Dispatch queue + unit assignment
+    ├── Reports.jsx          # Placeholder charts
+    ├── Settings.jsx         # Notification/threshold prefs
+    ├── Profile.jsx          # User profile display
+    └── NotFound.jsx         # 404 page
+Key Pages Detail
+Dashboard (Dashboard.jsx)
+- Stats Grid 1: Total Cameras, Camera Health (online/total), Edge Devices, Pending Verification
+- Stats Grid 2: Verified/Ready, Units Dispatched, Active Response, Resolved Today
+- Recent Mission Logs: Table with camera, time, location, confidence bar, status badge, Analyze button
+- Real-time: Socket listeners for all incident/device events + audio alert on new incident
+- System badge: "System Optimal" / "Network Caution" based on online cameras
+Live Incidents (LiveIncidents.jsx)
+- Priority Alerts: Cards for PENDING/VERIFIED/DISPATCHED/RESPONDING
+- IncidentCard: Snapshot image, GPS, vehicle count, confidence, Verify/Reject buttons (if pending)
+- Recent History: Collapsed cards for RESOLVED/FALSE_POSITIVE
+- Operator Directives: Protocol reminder panel
+- Status Timeline: Chronological log of recent incidents
+Emergency Dispatch (EmergencyDispatch.jsx)
+- Active Incident Queue: Filtered to VERIFIED/DISPATCHED/RESPONDING
+- Dispatch Panel: Expandable form per incident - select AVAILABLE unit, add notes, Confirm Dispatch
+- Status Transitions: 
+- VERIFIED → Dispatch Unit button
+- DISPATCHED → Mark Responding
+- RESPONDING → Mark Resolved (with optional notes)
+- Emergency Units Sidebar: Real-time status with colored indicators
+- Operational Protocol: 4-step checklist
+Edge Device Management (EdgeDeviceManagement.jsx)
+- Grid of device cards: Status bar (green/red), name, ID, camera assignment, GPS, last heartbeat, Android version
+- Real-time: Updates via socket without full refetch
+Emergency Unit Management (EmergencyUnitManagement.jsx)
+- Table: Unit name, ID, type, status, Edit/Delete actions
+- Modal Form: Create/edit unit (unitId, name, type, availability)
+Camera Management (CameraManagement.jsx)
+- CRUD interface for camera registry (referenced but not shown in detail)
+Auth Flow
+1. Login → POST /api/auth/login → JWT stored in localStorage + axios default header
+2. AuthProvider restores session on mount
+3. ProtectedRoute wraps all routes except /login
+4. 401 responses should redirect to login (not fully implemented)
+5. Data Flow
+Crash Detection Pipeline (Edge → Server → Client)
+Android Phone (Edge Device)
+    │
+    ├── Camera frames → YOLO detection
+    ├── Frame differencing → physics_score
+    ├── MotionGate.check(frame) → GateResult (triggered, threshold, score)
+    │
+    ├── FeatureExtractor.update(detections, frame)
+    │     ├── Tracks: predict/update positions
+    │     ├── Pairs: conflict + closing velocity + impact
+    │
+    ├── RuleClassifier.predict(features, pair_features)
+    │     └── "collision" / "rollover" / "normal"
+    │
+    └── If collision → POST /api/incidents/report
+              │
+              ▼
+Backend Server
+    │
+    ├── Incident.create(PENDING_VERIFICATION)
+    ├── io.emit('incident:new', incident)
+    ├── io.emit('dashboard:update')
+    │
+    ▼
+Web Client (Socket.io)
+    │
+    ├── Dashboard: fetchStats() → updates counts + plays audio
+    ├── LiveIncidents: fetchIncidents() → new card appears
+    ├── EmergencyDispatch: fetchData() → queue updated
+Heartbeat Flow
+Android App (periodic)
+    │
+    ├── POST /api/devices/:deviceId/heartbeat {status, lat, lng}
+    │
+    ▼
+Server
+    │
+    ├── EdgeDevice.lastHeartbeat = now
+    ├── If cameraId linked → Camera.lastHeartbeat = now, status=ONLINE
+    ├── getEffectiveStatus() compares now - lastHeartbeat < 5min
+    ├── io.emit('device:update', device)  (or device:online/offline)
+    ├── io.emit('dashboard:update')
+    │
+    ▼
+Client
+    │
+    └── EdgeDeviceManagement: device card updates in real-time
+6. Configuration & Deployment
+Python Engine
+# Run realtime processing
+python gate.py input_video.mp4 output_video.mp4 \
+    --camera cam_001 \
+    --mode auto \
+    --stride 3 \
+    --persist-frames 7 \
+    --persist-window 12 \
+    --physics-alpha 0.4 \
+    --calibration-mode frozen \
+    --homography path/to/H.npy
+Backend Server
+cd server
+npm install
+# Create .env with MONGODB_URI, JWT_SECRET
+npm run dev    # nodemon
+npm start      # production
+Frontend Client
+cd client
+npm install
+npm run dev    # Vite dev server (port 5173)
+npm run build  # Production build to dist/
+7. Key Design Decisions
+Motion Gate (Stage 1)
+- Frame differencing over optical flow for speed
+- Adaptive per-mode baselines handle day/night/twilight
+- Frozen calibration prevents traffic from raising threshold
+- X-of-Y persistence (v2) reduces false positives from transient motion
+Tracking (Stage 2)
+- Bottom-center association more stable than bbox IoU for traffic
+- Scale-normalized distance works without homography
+- Predicted tracks marked - never treated as fresh observations
+- Pair features only on fresh-fresh pairs - avoids stale-vs-fresh artifacts
+Collision Logic (Stage 3)
+- Trajectory conflict + temporal impact - not just overlap
+- Moving vs stationary/parked supported
+- Voting over time - single-frame glitches don't trigger
+- Rollover detection separate from collision
+Server
+- Public incident reporting - Android app doesn't need auth
+- Socket.io for real-time - no polling
+- Heartbeat-based online status - 5min timeout
+- Status machine on Incident/Unit enforces valid transitions
+8. File Reference Quick Index
+Python Core
+File	Purpose
+gate.py	Main pipeline (Stage 1-3)
+gate_v2.py	Enhanced Stage 1 with EMA + X-of-Y
+Android Java
+File
+AccidentEngine.java
+FeatureExtractor.java
+RuleClassifier.java
+MotionGate.java
+AutoThresholdManager.java
+Track.java
+BaselineState.java
+DayNightClassifier.java
+StabilityMonitor.java
+PairFeatures.java
+Server Controllers
+File	Purpose
+authController.js	JWT auth
+cameraController.js	Camera CRUD
+incidentController.js	Incident lifecycle + dispatch
+deviceController.js	Edge device registration/heartbeat
+dashboardController.js	Aggregate stats
+unitController.js	Emergency unit CRUD
+Client Pages
+File
+Dashboard.jsx
+LiveIncidents.jsx
+EmergencyDispatch.jsx
+EdgeDeviceManagement.jsx
+EmergencyUnitManagement.jsx
+CameraManagement.jsx
+IncidentHistory.jsx
+Reports.jsx
+Settings.jsx
+Profile.jsx
+Login.jsx
+9. Extension Points
+1. Android App Integration - Currently missing; needs to implement YOLO + gate.py logic on device
+2. Homography Calibration - UI for marking road plane points
+3. Incident History - Full pagination, export, search
+4. Reports - Real charts (Recharts/Chart.js)
+5. Multi-camera Correlation - Track vehicles across camera boundaries
+6. ML Model Updates - YOLO version management, confidence tuning
+7. Mobile PWA - Offline-capable operator interface
+8. Audit Logging - Expand SystemLog usage
+10. Testing Checklist
+- Gate calibration: stable threshold after 9000 frames of normal traffic
+- Day/night/twilight mode transitions with hysteresis
+- Motion state machine: MOVING→STOPPED→STATIONARY→PARKED
+- Pair conflict: approaching vehicles, crossing paths, rear-end
+- Collision veto: both stationary, insufficient closing, no impact
+- Heartbeat timeout: device → OFFLINE after 5min
+- Socket reconnection: client survives server restart
+- Auth: JWT expiry, protected routes redirect
+- Dispatch flow: VERIFIED→DISPATCHED→RESPONDING→RESOLVED
+- Unit availability: can't dispatch UNAVAILABLE unit
