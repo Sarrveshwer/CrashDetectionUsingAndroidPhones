@@ -2,6 +2,7 @@
 __pycache__/
 *.py[codz]
 *$py.class
+server/uploads/incidents/*
 .mp4
 # C extensions
 *.so
