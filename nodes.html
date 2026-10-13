@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CrashDet — Edge nodes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap"></noscript>
+<link rel="stylesheet" href="theme.css">
+<link rel="preconnect" href="https://cdn.socket.io" crossorigin>
+</head>
+<body>
+<div class="wrap">
+  <div id="chrome"></div>
+
+  <section class="card" style="margin-top:.9rem">
+    <div class="card-head">
+      <div>
+        <div class="eyebrow">Edge fleet</div>
+        <h2>Edge nodes</h2>
+        <div class="sub">Check which camera devices are online, when they last checked in, and where they're assigned.</div>
+      </div>
+      <button class="btn-dark" id="refreshNodes" type="button">Refresh</button>
+    </div>
+
+    <div class="node-summary">
+      <div class="mini"><div class="eyebrow">Registered</div><div class="num" id="nodeTotal">0</div></div>
+      <div class="mini"><div class="eyebrow">Online</div><div class="num" id="nodeOnline">0</div></div>
+      <div class="mini"><div class="eyebrow">Offline or other</div><div class="num" id="nodeOffline">0</div></div>
+    </div>
+
+    <div class="node-toolbar">
+      <input id="nodeSearch" type="search" placeholder="Search by name, model or camera" aria-label="Search edge nodes">
+      <select id="nodeStatusFilter" aria-label="Filter by status">
+        <option value="ALL">All statuses</option><option value="ONLINE">Online</option><option value="OFFLINE">Offline</option><option value="MAINTENANCE">Maintenance</option>
+      </select>
+      <select id="nodeSort" aria-label="Sort nodes">
+        <option value="status">Sort: status</option><option value="name">Sort: name</option><option value="heartbeat">Sort: last check-in</option>
+      </select>
+    </div>
+
+    <div id="nodeList" class="node-list" aria-live="polite"></div>
+  </section>
+
+  <p class="footer-note">CrashDet Control</p>
+</div>
+
+<script defer src="core.js"></script>
+<script defer src="nodes.js"></script>
+</body>
+</html>
